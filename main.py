@@ -56,10 +56,14 @@ def validate_config() -> Dict[str, str]:
     required_vars = {
         'steam_library_vdf_path': 'Steam library VDF file path',
         'sunshine_apps_json_path': 'Sunshine apps.json file path',
-        'sunshine_grids_folder': 'Sunshine grids folder path',
-        'steamgriddb_api_key': 'SteamGridDB API key'
+        'sunshine_grids_folder': 'Sunshine grids folder path'
     }
-    
+
+    optional_vars = {
+        'steamgriddb_api_key': 'SteamGridDB API key',
+        'steam_id': 'Steam ID'
+    }
+
     config = {}
     missing_vars = []
 
@@ -73,7 +77,18 @@ def validate_config() -> Dict[str, str]:
                 value = normalize_path(value)
                 logging.debug(f"Normalized {var}: {value}")
         config[var] = value
+        config[var.upper()] = value
     
+    for var, description in optional_vars.items():
+        value = os.getenv(var).strip()
+        if value:
+            # Normalize paths for file/folder variables
+            if 'PATH' in var or 'FOLDER' in var:
+                value = normalize_path(value)
+                logging.debug(f"Normalized {var}: {value}")
+        config[var] = value
+        config[var.upper()] = value
+
     # Optional variables with defaults
     steam_exe = os.getenv('STEAM_EXE_PATH', '')
     sunshine_exe = os.getenv('SUNSHINE_EXE_PATH', '')
