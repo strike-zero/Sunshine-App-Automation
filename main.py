@@ -68,7 +68,8 @@ def validate_config() -> Dict[str, str]:
     missing_vars = []
 
     for var, description in required_vars.items():
-        value = os.getenv(var)
+        value = os.getenv(var) or os.getenv(var.upper())
+        var = var.upper()
         if not value:
             missing_vars.append(f"{var} ({description})")
         else:
@@ -77,21 +78,22 @@ def validate_config() -> Dict[str, str]:
                 value = normalize_path(value)
                 logging.debug(f"Normalized {var}: {value}")
         config[var] = value
-        config[var.upper()] = value
     
     for var, description in optional_vars.items():
-        value = os.getenv(var).strip()
+        value = os.getenv(var) or os.getenv(var.upper())
+        var = var.upper()
         if value:
             # Normalize paths for file/folder variables
             if 'PATH' in var or 'FOLDER' in var:
                 value = normalize_path(value)
                 logging.debug(f"Normalized {var}: {value}")
         config[var] = value
-        config[var.upper()] = value
 
     # Optional variables with defaults
-    steam_exe = os.getenv('STEAM_EXE_PATH', '')
-    sunshine_exe = os.getenv('SUNSHINE_EXE_PATH', '')
+    steam_exe_path = 'steam_exe_path'
+    steam_exe = os.getenv(steam_exe_path) or os.getenv(steam_exe_path.upper())
+    sunshine_exe_path = 'sunshine_exe_path'
+    sunshine_exe = os.getenv(sunshine_exe_path) or os.getenv(sunshine_exe_path.upper())
 
     config['STEAM_EXE_PATH'] = normalize_path(steam_exe) if steam_exe else ''
     config['SUNSHINE_EXE_PATH'] = normalize_path(sunshine_exe) if sunshine_exe else ''
