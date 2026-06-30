@@ -54,14 +54,14 @@ def validate_config() -> Dict[str, str]:
     load_dotenv()
 
     required_vars = {
-        'steam_library_vdf_path': 'Steam library VDF file path',
+        'steam_folder': 'Steam folder',
         'sunshine_apps_json_path': 'Sunshine apps.json file path',
         'sunshine_grids_folder': 'Sunshine grids folder path'
     }
 
     optional_vars = {
         'steamgriddb_api_key': 'SteamGridDB API key',
-        'steam_id': 'SteamID32' 
+        'steam_id': 'Steam AccountID (SteamID32)' 
     }
 
     config = {}
@@ -103,8 +103,8 @@ def validate_config() -> Dict[str, str]:
         sys.exit(1)
 
     # Validate paths exist
-    if not os.path.exists(config['STEAM_LIBRARY_VDF_PATH']):
-        logging.error(f"Steam library VDF file not found: {config['STEAM_LIBRARY_VDF_PATH']}")
+    if not os.path.exists(config['STEAM_FOLDER']):
+        logging.error(f"Steam folder not found: {config['STEAM_FOLDER']}")
         sys.exit(1)
 
     # Validate parent directories exist for output paths
@@ -115,7 +115,6 @@ def validate_config() -> Dict[str, str]:
         sys.exit(1)
 
     return config
-
 
 def restart_steam(steam_exe_path: str) -> None:
     """Restart Steam application safely."""
@@ -225,8 +224,15 @@ def get_game_name(app_id: str) -> Optional[str]:
     logging.error(f"Failed to fetch name for AppID {app_id} after 3 attempts")
     return None
 
-def fetch_grid(app_id: str, api_key: str, grids_folder: str, steam_id: str) -> Optional[str]:
-    path = fetch_grid_from_steam_library(app_id, steam_id)
+def convert_to_png(image_path: str, grids_folder: str, app_id: str) -> str:
+    img = Image.open(image_path)
+    os.makedirs(grids_folder, exist_ok=True)
+    output_path = os.path.join(grids_folder, f'steam_{app_id}.png')
+    img.save(output_path, 'PNG')
+    return output_path
+
+def fetch_grid(app_id: str, grids_folder: str, steam_folder: str, api_key: str,  steam_id: str) -> Optional[str]:
+    path = fetch_grid_from_steam_library(app_id, steam_folder, grids_folder, steam_id)
     if path:
         return path
 
@@ -235,26 +241,17 @@ def fetch_grid(app_id: str, api_key: str, grids_folder: str, steam_id: str) -> O
         if path:
             return path
     
-    path = fetch_header_from_steam_library(app_id, steam_id)
+    path = fetch_header_from_steam_library(app_id, steam_folder, grids_folder)
     if path:
         return path
 
     logging.info(f"No image found for AppID {app_id}")
     return None
 
-def fetch_grid_from_steam_library(app_id: str, steam_id: str) -> Optional[str]:
-    if platform.system() == 'Windows':
-        steam_path = "C:/Program Files (x86)/Steam/userdata/"
-    elif platform.system() == 'Darwin':
-        steam_path = "~/Library/Application Support/Steam/"
-    else:
-        steam_path = "~/.local/share/Steam/"
-
-    image_path = None
-
+def fetch_grid_from_steam_library(app_id: str, steam_folder: str, grids_folder: str, steam_id: str) -> Optional[str]:
     if steam_id:
         # find assigned custom grid, if available
-        custom_grid_path =  os.path.join(steam_path, f"userdata/{steam_id}/config/grid/")
+        custom_grid_path =  os.path.join(steam_folder, f"userdata/{steam_id}/config/grid/")
         
         custom_grid_png = os.path.join(custom_grid_path, f"{app_id}p.png")
         custom_grid_jpg = os.path.join(custom_grid_path, f"{app_id}p.jpg")
@@ -271,20 +268,20 @@ def fetch_grid_from_steam_library(app_id: str, steam_id: str) -> Optional[str]:
 
         if image_path:
             logging.info(f"Found custom grid for AppID {app_id}")
-            return image_path
+            return convert_to_png(image_path, grids_folder, app_id)
 
     # fallback to official grid
-    app_library_path = os.path.join(steam_path, "appcache/librarycache", app_id)
+    app_library_path = os.path.join(steam_folder, "appcache/librarycache", app_id)
 
     if os.path.isdir(app_library_path):
         for root, dirs, files in os.walk(app_library_path):
-            if "library_capsule_2x" in files:
+            if "library_capsule_2x.jpg" in files:
                 image_path = os.path.join(root, "library_capsule_2x.jpg")
                 break
             elif "library_capsule.jpg" in files:
                 image_path = os.path.join(root, "library_capsule.jpg")
                 break
-            elif "library_600x900_2x" in files:
+            elif "library_600x900_2x.jpg" in files:
                 image_path = os.path.join(root, "library_600x900_2x.jpg")
                 break
             elif "library_600x900.jpg" in files:
@@ -296,26 +293,20 @@ def fetch_grid_from_steam_library(app_id: str, steam_id: str) -> Optional[str]:
 
     if image_path:
         logging.info(f"Found official grid for AppID {app_id}")
-        return image_path
+        return convert_to_png(image_path, grids_folder, app_id)
     
     logging.info(f"No Steam library image found for AppID {app_id}")
     return None
 
-def fetch_header_from_steam_library(app_id, steam_id):
-    if platform.system() == 'Windows':
-        steam_path = "C:/Program Files (x86)/Steam/userdata/"
-    elif platform.system() == 'Darwin':
-        steam_path = "~/Library/Application Support/Steam/"
-    else:
-        steam_path = "~/.local/share/Steam/"
-
-    app_library_path = os.path.join(steam_path, "appcache/librarycache", app_id)
+def fetch_header_from_steam_library(app_id, steam_folder, grids_folder):
+    app_library_path = os.path.join(steam_folder, "appcache/librarycache", app_id)
 
     if os.path.isdir(app_library_path):
         for root, dirs, files in os.walk(app_library_path):
             if "header.jpg" in files:
                 logging.info(f"Found official header for AppID {app_id}")
-                return os.path.join(root, "header.jpg")
+                image_path = os.path.join(root, "header.jpg")
+                return convert_to_png(image_path, grids_folder, app_id)
     else:
         logging.warning(f"Directory not found: {app_library_path}")
         return None
@@ -346,7 +337,7 @@ def fetch_grid_from_steamgriddb(app_id: str, api_key: str, grids_folder: str) ->
 
                     # Reopen for saving (verify() closes the image)
                     image = Image.open(io.BytesIO(grid_response.content))
-                    grid_path = os.path.join(grids_folder, f"{app_id}.png")
+                    grid_path = os.path.join(grids_folder, f"steam_{app_id}.png")
 
                     # Ensure directory exists
                     os.makedirs(grids_folder, exist_ok=True)
@@ -482,20 +473,21 @@ def load_installed_games(library_vdf_path: str) -> Dict[str, str]:
     logging.info(f"Found {len(installed_games)} installed games")
     return installed_games
 
-def process_existing_apps(sunshine_config: Dict, installed_games: Dict[str, str], config: Dict[str,str]) -> Tuple[List[Dict], List[Tuple[str, str]], Set[str]]:
+def process_existing_apps(sunshine_config: Dict, installed_games: Dict[str, str], grids_folder: str, steam_folder:str, api_key: str, steam_id: str,  update_covers: bool) -> Tuple[List[Dict], List[Tuple[str, str]], Set[str]]:
     """Process existing Sunshine apps and identify changes."""
     updated_apps = []
     removed_games = []
     existing_steam_apps = set()
 
     for app in sunshine_config.get('apps', []):
-        detached = app.get('detached', [""])
+        detached = app.get('detached', [''])
         if "steam://rungameid/" in detached[0]:
             app_id = detached[0].split('/')[-1]
             if app_id in installed_games:
                 updated_apps.append(app)
                 existing_steam_apps.add(app_id)
-                app['image-path'] = fetch_grid(app_id, config['STEAMGRIDDB_API_KEY'], config['SUNSHINE_GRIDS_FOLDER'], config['STEAM_ID'])
+                if update_covers:
+                    app['image-path'] = fetch_grid(app_id, grids_folder, steam_folder, api_key, steam_id)
             else:
                 removed_games.append((app.get('name', 'Unknown'), app_id))
                 # Clean up grid image
@@ -512,7 +504,7 @@ def process_existing_apps(sunshine_config: Dict, installed_games: Dict[str, str]
 
     return updated_apps, removed_games, existing_steam_apps
 
-def add_new_games(new_games: Set[str], installed_games: Dict[str, str], api_key: str, grids_folder: str, steam_id: str) -> List[Dict]:
+def add_new_games(new_games: Set[str], installed_games: Dict[str, str], grids_folder: str, steam_folder: str, api_key: str, steam_id: str) -> List[Dict]:
     """Add new games with grid images using concurrent downloads."""
     new_apps = []
 
@@ -526,7 +518,7 @@ def add_new_games(new_games: Set[str], installed_games: Dict[str, str], api_key:
         future_to_app_id = {}
 
         for app_id in new_games:
-            future = executor.submit(fetch_grid, app_id, api_key, grids_folder, steam_id)
+            future = executor.submit(fetch_grid, app_id, grids_folder, steam_folder, api_key, steam_id)
             future_to_app_id[future] = app_id
 
         processed = 0
@@ -582,6 +574,7 @@ def main() -> None:
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     parser.add_argument('--no-restart', action='store_true', help='Skip restarting Steam and Sunshine')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be done without making changes')
+    parser.add_argument('--update-covers', action='store_true', help='Update all game covers')
     args = parser.parse_args()
 
     # Setup logging
@@ -597,7 +590,8 @@ def main() -> None:
             restart_steam(config['STEAM_EXE_PATH'])
 
         # Load installed games
-        installed_games = load_installed_games(config['STEAM_LIBRARY_VDF_PATH'])
+        vdf_path = os.path.join(config['STEAM_FOLDER'], 'steamapps', 'libraryfolders.vdf')
+        installed_games = load_installed_games(vdf_path)
 
         # Load Sunshine configuration
         sunshine_config = get_sunshine_config(config['SUNSHINE_APPS_JSON_PATH'])
@@ -606,7 +600,7 @@ def main() -> None:
         os.makedirs(config['SUNSHINE_GRIDS_FOLDER'], exist_ok=True)
 
         # Process existing apps
-        updated_apps, removed_games, existing_steam_apps = process_existing_apps(sunshine_config, installed_games, config)
+        updated_apps, removed_games, existing_steam_apps = process_existing_apps(sunshine_config, installed_games, config['SUNSHINE_GRIDS_FOLDER'], config['STEAM_FOLDER'], config['STEAMGRIDDB_API_KEY'], config['STEAM_ID'], args.update_covers)
 
         # Find new games to add
         new_games = set(installed_games.keys()) - existing_steam_apps
@@ -617,7 +611,7 @@ def main() -> None:
         if new_games:
             logging.info(f"New games to add: {[installed_games[app_id] for app_id in new_games]}")
 
-        if not removed_games and not new_games:
+        if not removed_games and not new_games and not args.update_covers:
             logging.info("No changes needed - all games are up to date")
             return
 
@@ -626,7 +620,7 @@ def main() -> None:
             return
 
         # Add new games
-        new_apps = add_new_games(new_games, installed_games, config['STEAMGRIDDB_API_KEY'], config['SUNSHINE_GRIDS_FOLDER'], config['STEAM_ID'])
+        new_apps = add_new_games(new_games, installed_games, config['SUNSHINE_GRIDS_FOLDER'], config['STEAM_FOLDER'], config['STEAMGRIDDB_API_KEY'], config['STEAM_ID'])
         updated_apps.extend(new_apps)
 
         # Update and save configuration
